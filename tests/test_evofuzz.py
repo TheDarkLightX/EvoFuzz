@@ -103,7 +103,7 @@ class SearchTests(Fixture):
     def test_corpus_cap_and_novelty(self):
         corpus = Corpus([[]], 2)
         for actions, cover, distance in [([PAY], "p", 2), ([REFUND], "r", 1)]:
-            corpus.observe(actions, {"target": {"value": {"coverage": [cover], "distance": distance}}})
+            corpus.observe(actions, {"outcome": "pass", "target": {"value": {"coverage": [cover], "distance": distance}}})
         self.assertEqual(len(corpus.entries), 2)
         self.assertEqual(corpus.coverage, {"p", "r"})
 

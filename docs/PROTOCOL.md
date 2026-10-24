@@ -23,7 +23,7 @@ exit. Logging belongs on stderr, within the shared output limit.
 }
 ```
 
-`oracle`, `limits`, `proposer` and `mutants` are optional. This example's
+`oracle`, `limits`, `proposer`, `mutants`, `domain` and `archive` are optional. This example's
 `provider-adapter` is a placeholder for an executable you supply, not a bundled
 command. Unknown fields are rejected. Bindings name files you want tracked;
 declare transitive inputs when their changes matter.
@@ -110,16 +110,71 @@ vocabulary, bounds, operators, corpus examples and available feedback. Its
 }
 ```
 
-There may be up to 16 proposed cases. Cases must contain declared vocabulary
-actions. Optional weights are integers 1–100 for `insert`, `replace`, `delete`,
-`duplicate`, `swap`, `splice`, `random`. Unspecified weights retain their prior
-values. Every operator retains positive weight. Hypotheses are advisory text;
+There may be up to 16 proposed cases. Cases must match the declared prototypes,
+parameter domains and required setup. Optional weights are integers 1–100 for
+operators named in the request: `insert`, `replace`, `delete`, `duplicate`,
+`swap`, `splice`, `random`, and, where configured, `parameter`, `rebind`, `block`.
+Optional `family_weights` maps only family IDs named in the exact request to
+positive integer weights 1–100. Unspecified weights retain their prior values.
+Every operator retains positive weight. Hypotheses are advisory text;
 they are never executed or accepted as failure evidence.
 
 Offline proposals match the initial `prompt` packet for exactly that target
 and source state. Adaptive command proposals match their current packet.
 Stale proposals, unknown fields and attempts to supply commands/oracles are
 rejected. Invalid adaptive proposals are logged and search continues.
+
+## Domain-aware evolution (0.2)
+
+`domain.parameters` declares scalar enum fields (`{"values":["A","B"]}`) or
+integer fields (`{"min":0,"max":100}`). There are at most 16 parameter fields,
+64 enum values per field and integer widths up to 1000000000. Integer endpoints
+are signed 64-bit. Enum values are null, Boolean, integer or strings up to 128
+characters. Boolean true and integer 1 are distinct values.
+
+Actions must match a vocabulary prototype's exact keys and nonparameter
+constants. Only fields present in that prototype may vary. `op` cannot be a
+parameter. `identity_fields` lists at most eight enum fields for correlated or
+individual rebinding. `blocks` contains at most 16 uniquely named sequences of
+1–16 valid actions. A selected block is inserted whole only when it fits.
+`setup` is an optional fixed prefix of at most 16 actions. It counts toward
+`max_actions` and is enforced on seeds, proposals and mutations. The complete
+domain declaration is limited to 16 KiB. No Cartesian domain is materialized.
+
+`archive.features` lists 1–4 target observation feature names, default
+`["family"]`. An optional observation `features` object holds at most 16 bounded
+scalar descriptors (strings up to 128 characters). Features guide search; they
+are neither oracle verdicts nor checked semantic equivalence claims. Missing
+features are marked explicitly. When all selected features are absent, the
+archive uses a labelled structural pattern/length descriptor.
+
+`archive.per_family` is 1–4, bounded by `max_corpus`, default min(2,max_corpus).
+Within a family, retain a quality champion and, if slots permit, representatives
+whose action/adjacent-action token sets differ most from those retained. When
+full, reclaim extra representatives before removing an entire family. Capacity
+can still force the loss of families; the archive does not preserve all niches.
+
+Quality prioritizes confirmed failures, lower distance, coverage and shorter
+sequences. Useful offspring earn bounded novelty/retention rewards. A newly
+replayed failure adds a separate reward without counting another mutation
+attempt. The scheduler learns per-family operator reward rates using integer
+weights. Parent-family selection uses selection counts and offspring rewards.
+At most 256 named learning contexts plus one overflow context are retained.
+
+`archive.exploration_percent` is 1–100, default 20. After initial seeds, each
+attempt has that probability of uniform family/representative/operator
+exploration, independent of learned/model weights. A model proposal queue
+cannot consume these exploration attempts. This is a probability per attempt,
+not a promise of an exact fraction in a short run. Transport failures and
+unconfirmed findings are not rewarded as confirmed bugs.
+
+New artifacts: `archive.json` stores family and representative metadata,
+`learning.json` stores scheduling statistics, and `lineage.jsonl` records every
+search attempt, including duplicates, plus completed reductions. Case hashes identify content; distinct event IDs
+identify derivations, so a sequence can reappear without a cyclic ancestry
+claim. Splicing names both parents; random generation and externally supplied
+cases do not invent genetic parents. Confirmation receipts and minimization
+summaries remain in findings; not every intermediate shrink trial is logged.
 
 ## Replay and mutation testing
 

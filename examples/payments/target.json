@@ -1,0 +1,32 @@
+{
+  "schema": "evofuzz/target/1",
+  "objective": "Explore replay, identity, authorization, reversal and recovery sequences from pay/pay. Find a double payout.",
+  "command": ["{python}", "target.py", "--bug"],
+  "bindings": ["target.py"],
+  "vocabulary": [
+    {"op": "pay", "id": "A", "actor": "owner", "amount": 1},
+    {"op": "refund", "id": "A", "actor": "owner", "amount": 1},
+    {"op": "restart"}
+  ],
+  "domain": {
+    "parameters": {
+      "id": {"values": ["A", "B"]},
+      "actor": {"values": ["owner", "outsider"]},
+      "amount": {"min": 0, "max": 2}
+    },
+    "identity_fields": ["id"],
+    "blocks": [
+      {"name": "recovery", "actions": [{"op": "restart"}]},
+      {"name": "refund-retry", "actions": [
+        {"op": "refund", "id": "A", "actor": "owner", "amount": 1},
+        {"op": "pay", "id": "A", "actor": "owner", "amount": 1}
+      ]}
+    ]
+  },
+  "archive": {"features": ["family"], "per_family": 2, "exploration_percent": 20},
+  "limits": {"max_actions": 10, "max_corpus": 24, "shrink_budget": 40},
+  "seeds": [[
+    {"op": "pay", "id": "A", "actor": "owner", "amount": 1},
+    {"op": "pay", "id": "A", "actor": "owner", "amount": 1}
+  ]]
+}

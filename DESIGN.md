@@ -1,18 +1,24 @@
-# EvoFuzz 0.1 design
+# EvoFuzz design
 
 EvoFuzz is a standalone, LLM-steerable evolutionary fuzzer for bounded action
-sequences. The requirements below define the initial implementation; a run
+sequences. The requirements below define the implementation; a run
 finds counterexamples, not a proof that no counterexamples exist.
 
 ## Search and authority
 
 1. A user-owned target file fixes the objective, action vocabulary, seed cases,
    process commands, declared input files, and execution/search limits.
-2. Each case is a list of vocabulary actions. A seeded PRNG applies insertion,
+2. Each case is a list of declared actions. A seeded PRNG applies insertion,
    replacement, deletion, duplication, swapping, splicing and random generation.
-3. Coverage novelty and improved target-provided distance retain seeds in a
-   bounded corpus. These signals guide search; they do not establish a bug.
-4. Periodic LLM proposals may supply vocabulary-valid cases and mutation weights.
+   Optional typed parameter domains, identity rebinding, named blocks and fixed
+   setup prefixes support domain-specific sequences.
+3. A bounded archive retains behavioral families and structurally different
+   representatives. Online scheduling learns useful parent-family/operator
+   combinations from coverage novelty, distance and confirmed failures, with
+   a configured probability of uniform exploration. These signals guide search;
+   they do not establish a bug. Family definitions and bounds are in
+   [Domain-aware evolution](docs/EVOLVABILITY.md).
+4. Periodic LLM proposals may supply domain-valid cases and mutation/family weights.
    Proposals must name the exact request hash. They cannot edit commands,
    objectives, oracles, limits, file bindings or verdicts.
 5. The target checks its properties after every action. An optional independent
@@ -47,7 +53,10 @@ an agent steer search without a model-specific SDK or API key in the fuzzer.
 
 Each run records its validated configuration, original target file, resolved
 commands, executable hashes, declared file hashes, PRNG seed, attempted cases,
-feedback, proposals, bounded corpus, finding candidates and replay results.
+feedback, proposals, bounded archive, mutation lineage, learning statistics,
+finding candidates and replay results. Duplicate attempts are visible in the
+lineage log; descendants need not have distinct behavior. Fresh random restarts
+and model-supplied cases have no inferred genetic parents.
 Input fingerprints are checked before and after execution. This detects
 persistent changes; it does not defeat a concurrent edit-and-restore race or
 prove a complete dependency closure. Declared fingerprints are not signed
@@ -76,7 +85,7 @@ source code or assume that every supplied mutant is semantically incorrect.
 
 - Standalone package and CLI: run, prompt, replay, minimize, mutation-test.
 - Offline and opt-in command-backed LLM steering, with exact request binding.
-- Repeatable action mutation and bounded corpus selection.
+- Repeatable domain-aware mutation, family retention and learned scheduling.
 - Property and differential oracles, replay confirmation and bounded shrinking.
 - Process deadlines/output bounds, malformed-input and source-drift controls.
 - A correct escrow target, deliberately faulty variants, and an independent
@@ -84,10 +93,10 @@ source code or assume that every supplied mutant is semantically incorrect.
 - Tests for search, semantic mismatch, proposal tampering, false positives,
   replay drift, minimization, timeout/output limits and mutation-test errors.
 - Public README, protocol documentation, research references, CI, an agent
-  usage skill, and a clean local Git repository ready for the user's own remote.
+  usage skill, and a portable standalone repository.
 
-No live service scans, external model charges, automatic repairs, public push,
-release tag, performance superiority or formal correctness claim are in scope.
+No live service scans, external model charges, automatic repairs, release tag,
+performance superiority or formal correctness claim are in scope.
 
 ## Research basis
 
