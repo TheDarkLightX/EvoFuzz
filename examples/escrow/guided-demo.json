@@ -1,0 +1,72 @@
+{
+  "schema": "evofuzz/target/1",
+  "objective": "Find a sequence that pays and refunds the same unit, or accepts an unauthorized action.",
+  "command": [
+    "{python}",
+    "target.py",
+    "--bug"
+  ],
+  "oracle": [
+    "{python}",
+    "reference.py"
+  ],
+  "bindings": [
+    "target.py",
+    "reference.py",
+    "../scripted_proposer.py"
+  ],
+  "vocabulary": [
+    {
+      "op": "pay",
+      "authorized": false
+    },
+    {
+      "op": "pay",
+      "authorized": true
+    },
+    {
+      "op": "refund",
+      "authorized": false
+    },
+    {
+      "op": "refund",
+      "authorized": true
+    }
+  ],
+  "seeds": [
+    [],
+    [
+      {
+        "op": "pay",
+        "authorized": true
+      }
+    ]
+  ],
+  "limits": {
+    "max_actions": 8,
+    "shrink_budget": 40,
+    "proposer_interval": 2
+  },
+  "mutants": [
+    {
+      "id": "refund-after-payment",
+      "command": [
+        "{python}",
+        "target.py",
+        "--bug"
+      ]
+    },
+    {
+      "id": "missing-authorization",
+      "command": [
+        "{python}",
+        "target.py",
+        "--auth-bug"
+      ]
+    }
+  ],
+  "proposer": [
+    "{python}",
+    "../scripted_proposer.py"
+  ]
+}
