@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evofuzz"
+version = "0.1.0"
+description = "LLM-steerable evolutionary fuzzing with reproducible counterexamples"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+[project.scripts]
+evofuzz = "evofuzz.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["evofuzz*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

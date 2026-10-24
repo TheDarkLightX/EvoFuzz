@@ -1,0 +1,2 @@
+[{"op":"pay","authorized":true},{"op":"refund","authorized":true}]
+[{"op":"pay","authorized":false}]
