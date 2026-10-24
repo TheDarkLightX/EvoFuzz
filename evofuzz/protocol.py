@@ -91,16 +91,19 @@ def integer(value, low, high, name):
     return value
 
 
-def case(actions, vocabulary, max_actions):
+def case(actions, vocabulary, max_actions, domain=None):
     require(type(actions) is list and len(actions) <= max_actions, "case length/type limit")
-    known = {canonical(action) for action in vocabulary}
-    require(all(canonical(action) in known for action in actions), "action outside vocabulary")
+    if domain is not None:
+        domain.validate(actions)
+    else:
+        known = {canonical(action) for action in vocabulary}
+        require(all(canonical(action) in known for action in actions), "action outside vocabulary")
     require(len(canonical(actions)) <= 32_768, "case byte limit")
     return loads(canonical(actions))
 
 
 def observation(value):
-    keys(value, {"schema", "status", "coverage", "distance", "observation", "failure"},
+    keys(value, {"schema", "status", "coverage", "distance", "observation", "failure", "features"},
          {"schema", "status", "observation"})
     require(value["schema"] == "evofuzz/observation/1", "wrong observation schema")
     require(value["status"] in ("pass", "fail", "invalid"), "wrong observation status")
@@ -108,6 +111,10 @@ def observation(value):
     require(type(coverage) is list and len(coverage) <= 128, "coverage limit/type")
     require(all(type(x) is str and 0 < len(x) <= 128 for x in coverage), "invalid coverage label")
     integer(value.get("distance", 1_000_000), 0, 1_000_000, "distance")
+    features = value.get("features", {})
+    require(type(features) is dict and len(features) <= 16, "feature limit/type")
+    require(all(len(k) <= 128 and (v is None or type(v) in (bool, int) or
+                type(v) is str and len(v) <= 128) for k, v in features.items()), "features require bounded scalars")
     if value["status"] == "fail":
         failure = value.get("failure")
         keys(failure, {"id", "message"}, {"id"})
@@ -118,17 +125,22 @@ def observation(value):
     return value
 
 
-def proposal(value, request, vocabulary, max_actions):
-    keys(value, {"schema", "request_id", "cases", "weights", "hypothesis"},
+def proposal(value, request, vocabulary, max_actions, domain=None):
+    keys(value, {"schema", "request_id", "cases", "weights", "hypothesis", "family_weights"},
          {"schema", "request_id", "cases"})
     require(value["schema"] == "evofuzz/proposal/1", "wrong proposal schema")
     require(value["request_id"] == request["request_id"], "stale/wrong proposal request")
     require(type(value["cases"]) is list and len(value["cases"]) <= 16, "proposal case limit/type")
-    cases = [case(item, vocabulary, max_actions) for item in value["cases"]]
+    cases = [case(item, vocabulary, max_actions, domain) for item in value["cases"]]
     weights = value.get("weights", {})
-    require(type(weights) is dict and weights.keys() <= set(OPERATORS), "unknown mutation operator")
+    require(type(weights) is dict and weights.keys() <= set(request.get("operators", OPERATORS)), "unknown mutation operator")
     for weight in weights.values():
         integer(weight, 1, 100, "mutation weight")
+    families = value.get("family_weights", {})
+    available = {f["family_id"] for f in request.get("families", [])}
+    require(type(families) is dict and families.keys() <= available, "unknown family weight")
+    for weight in families.values():
+        integer(weight, 1, 100, "family weight")
     hypothesis = value.get("hypothesis", "")
     require(type(hypothesis) is str and len(hypothesis) <= 4096, "hypothesis limit/type")
     return cases, weights

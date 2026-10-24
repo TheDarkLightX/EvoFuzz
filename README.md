@@ -6,7 +6,9 @@ Give EvoFuzz a stateful target, an action vocabulary and a concrete question:
 
 > Can a retry sequence pay and refund the same deposit?
 
-EvoFuzz mutates action sequences, executes them and retains useful cases.
+EvoFuzz mutates action sequences, executes them and retains useful cases across
+different behavioral families. It learns which mutations produce useful
+offspring in each family while preserving uniform exploration.
 An LLM can propose sequences and steer mutation weights using the observed
 feedback. Your executable properties and reference models decide whether a
 case fails. Reproducible findings are saved and reduced to shorter witnesses.
@@ -17,7 +19,7 @@ objective + seeds → mutate → execute → check → retain → repeat
                    LLM proposals ← feedback ───┘
 ```
 
-This first version focuses on structured, stateful testing. It has no runtime
+This implementation focuses on structured, stateful testing. It has no runtime
 dependencies beyond Python 3.11+. Targets can be written in any language that
 can exchange JSON with a process.
 
@@ -56,16 +58,40 @@ On systems where Python is named `python`, use that command instead.
 
 - **Fast mutations:** insert, replace, delete, duplicate, swap, splice and
   generate fresh action sequences, using a repeatable PRNG seed.
-- **Execution feedback:** new coverage labels and improved distance to a
-  user-defined target retain seeds in a bounded corpus.
+- **Domain-aware mutations:** vary declared parameter values, rebind request
+  identities and insert named action blocks while preserving required setup.
+- **Behavioral families:** retain quality and structural-diversity representatives
+  of target-reported families instead of replacing cases solely by age.
+- **Online learning:** measured offspring productivity steers parent and operator
+  selection; coverage and distance remain advisory search signals.
 - **LLM proposals:** a model suggests vocabulary-valid cases and mutation
-  weights in response to an objective, corpus and feedback packet.
+  and family weights in response to domain, archive and feedback packets.
 - **Oracles:** executable properties and optional differential references
   identify failures. Coverage and distance alone cannot declare a bug.
 
 Use failures such as conservation violations, unauthorized transitions,
 non-atomic rejection, duplicate effects or divergent replay. The harness must
 check them after **every action**, including intermediate steps.
+
+## From one seed to several families
+
+The payment-domain example begins with `[pay(A), pay(A)]`. Its declared domain
+adds identities A/B, owner/outsider actors, amounts 0–2, refunds and restarts:
+
+```sh
+python3 -m evofuzz run examples/payments/target.json --out runs/families --seed 7 --budget 200
+```
+
+Inspect `archive.json` for retained families, `lineage.jsonl` for parent/child
+events and `learning.json` for mutation attempts and rewards. The target labels
+replay, identity, authorization, reversal and recovery families. These labels
+describe explored behaviors; a label alone does not establish a bug.
+
+Each descendant is a concrete test sequence. Several descendants can explore
+the same family or produce the same sequence; duplicates are skipped and
+logged. New operations and parameter values must be declared by the user.
+See the [evolvability design](docs/EVOLVABILITY.md) for the retention, learning
+and domain contract.
 
 ## Connect an agent or LLM
 
@@ -130,14 +156,16 @@ On Windows only the direct process is terminated; use external job/container
 isolation when child cleanup matters.
 
 Fingerprints cover the declared files, executables, target configuration and
-EvoFuzz source. They do not establish a complete dependency closure or defeat
+EvoFuzz source. Replay with a changed tool version is refused; preserve the
+matching executable/source for older runs. Fingerprints do not establish a
+complete dependency closure or defeat
 an input that is edited and restored during execution. Environment variables,
 shared libraries and remote services remain outside those fingerprints.
 Run artifacts can contain sensitive test data; they are Git-ignored by default.
 
 See the [protocol](docs/PROTOCOL.md), [design](DESIGN.md) and
 [validation record](VALIDATION.md). GPU acceleration, symbolic path solving,
-automatic source mutation and formal safety proofs are outside version 0.1.
+automatic source mutation and formal safety proofs are outside version 0.2.
 
 ## Development
 

@@ -7,7 +7,8 @@ from pathlib import Path
 import shutil
 import sys
 
-from . import protocol as p
+from . import __version__, protocol as p
+from .domain import Domain
 
 DEFAULTS = {"max_actions": 32, "max_corpus": 64, "timeout_ms": 2000,
             "output_bytes": 65_536, "confirmations": 2, "shrink_budget": 100,
@@ -49,6 +50,8 @@ class Config:
     data: dict
     limits: dict
     commands: dict
+    domain: Domain | None = None
+    archive: dict | None = None
 
     @property
     def root(self):
@@ -58,20 +61,24 @@ class Config:
     def vocabulary(self):
         return self.data["vocabulary"]
 
+    @property
+    def operators(self):
+        return self.domain.operators if self.domain else p.OPERATORS
+
     def fingerprint(self):
         files = {name: file_hash((self.root / name).resolve()) for name in self.data["bindings"]}
         executables = {name: file_hash(Path(cmd[0])) for name, cmd in self.commands.items()}
         return {"schema": "evofuzz/bindings/1", "config_sha256": file_hash(self.path),
                 "files": files, "executables": executables,
                 "tool_sources": {path.name: file_hash(path) for path in sorted(Path(__file__).parent.glob("*.py"))},
-                "commands": self.commands, "tool_version": "0.1.0"}
+                "commands": self.commands, "tool_version": __version__}
 
 
 def load(path):
     path = Path(path).resolve()
     data = p.read(path)
     p.keys(data, {"schema", "objective", "command", "oracle", "bindings", "vocabulary",
-                  "seeds", "limits", "proposer", "mutants"},
+                  "seeds", "limits", "proposer", "mutants", "domain", "archive"},
            {"schema", "objective", "command", "bindings", "vocabulary", "seeds"})
     p.require(data["schema"] == "evofuzz/target/1", "wrong target schema")
     p.require(type(data["objective"]) is str and 0 < len(data["objective"]) <= 4096, "invalid objective")
@@ -88,8 +95,22 @@ def load(path):
     for name, value in limits.items():
         p.integer(value, *BOUNDS[name], name)
     p.require(type(data["seeds"]) is list and 0 < len(data["seeds"]) <= 128, "seed limit/type")
+    domain = Domain(vocabulary, data.get("domain"))
+    p.require(len(domain.setup) <= limits["max_actions"], "setup exceeds action limit")
+    p.require(all(len(b["actions"]) + len(domain.setup) <= limits["max_actions"] for b in domain.blocks),
+              "block cannot fit with setup")
     for seed in data["seeds"]:
-        p.case(seed, vocabulary, limits["max_actions"])
+        p.case(seed, vocabulary, limits["max_actions"], domain)
+    settings = data.get("archive", {})
+    p.keys(settings, {"features", "per_family", "exploration_percent"}, set())
+    settings = {"features": ["family"], "per_family": min(2, limits["max_corpus"]),
+                "exploration_percent": 20} | settings
+    p.integer(settings["per_family"], 1, min(4, limits["max_corpus"]), "representatives per family")
+    p.integer(settings["exploration_percent"], 1, 100, "exploration percentage")
+    names = settings["features"]
+    p.require(type(names) is list and 1 <= len(names) <= 4 and
+              all(type(n) is str and 0 < len(n) <= 128 for n in names), "archive feature limit/type")
+    p.require(len(set(names)) == len(names), "duplicate archive feature")
     commands = {"target": command(data["command"], path.parent)}
     for name in ("oracle", "proposer"):
         if name in data:
@@ -102,6 +123,6 @@ def load(path):
         name = "mutant:" + item["id"]
         p.require(name not in commands, "duplicate mutant ID")
         commands[name] = command(item["command"], path.parent)
-    result = Config(path, data, limits, commands)
+    result = Config(path, data, limits, commands, domain, settings)
     result.fingerprint()  # Refuse missing declared inputs before search starts.
     return result

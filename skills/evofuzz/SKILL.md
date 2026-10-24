@@ -38,6 +38,12 @@ actors, omit authority, cancel after completion, or hit declared boundaries.
 Stay within the vocabulary. If the vocabulary cannot express the hypothesis,
 report the missing capability; do not silently weaken the question.
 
+For domain-aware targets, inspect `domain` parameter bounds, identity fields,
+named blocks and required setup before proposing cases. Use `archive.json` to
+find underexplored families and `learning.json` to inspect actual offspring
+productivity. Family labels and rewards guide search; they do not prove a bug.
+Optional `family_weights` may name only family IDs in the current request.
+
 Write `evofuzz/proposal/1` with the exact request ID, up to 16 action arrays and
 optional mutation weights. Do not add commands, oracle changes or verdicts.
 
@@ -59,6 +65,8 @@ python3 -m evofuzz mutation-test TARGET.json --cases cases.jsonl --out mutations
 
 Inspect the property ID, every step of the witness, target and reference
 observations, source fingerprints, repeat results and minimization status.
+Inspect `lineage.jsonl` to trace search derivations. Duplicate content can recur;
+event IDs identify derivations, and case hashes identify sequence content.
 Distinguish a target defect from an oracle/harness defect. Timeouts, source
 drift, malformed output and unavailable references stay errors or inconclusive.
 

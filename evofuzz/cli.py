@@ -19,7 +19,7 @@ def replay(config, directory, name="finding-0001.json", minimize=False):
     finding = p.read(directory / name)
     p.require(finding.get("schema") == "evofuzz/finding/1", "wrong finding schema")
     p.require(finding["binding_id"] == p.digest(binding), "finding binding mismatch")
-    actions = p.case(finding["actions"], config.vocabulary, config.limits["max_actions"])
+    actions = p.case(finding["actions"], config.vocabulary, config.limits["max_actions"], config.domain)
     evaluator = Evaluator(config, binding, config.limits["confirmations"] + config.limits["shrink_budget"])
     stable, results = confirm(evaluator, actions)
     matched = stable and results[0].get("signature") == finding["signature"]
@@ -41,7 +41,7 @@ def read_cases(path, config):
             p.require(len(line) <= 65_537 and total <= 16_777_216, "case corpus byte limit")
             if not line.strip():
                 continue
-            cases.append(p.case(p.loads(line), config.vocabulary, config.limits["max_actions"]))
+            cases.append(p.case(p.loads(line), config.vocabulary, config.limits["max_actions"], config.domain))
             p.require(len(cases) <= 1024, "case corpus count limit")
     p.require(bool(cases), "empty case corpus")
     return cases
