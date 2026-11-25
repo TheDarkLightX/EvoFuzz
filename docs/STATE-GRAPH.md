@@ -46,8 +46,8 @@ up to `frontier_tail` actions (default 16, within `max_actions`).
 - **Parameter domains.** With parameter domains, candidate actions are sampled from the
   domain; "untried" then means untried among the samples.
 
-After the initial seeds, `frontier_percent` of attempts (default 80) that do not consume a
-queued case use the frontier while one exists. The rest use the learned scheduler, which may
+After the initial seeds, `frontier_percent` of non-exploration attempts (default 80) that do
+not consume a queued case use the frontier while one exists. The rest use the learned scheduler, which may
 also pick `frontier` as an operator. Uniform exploration attempts are unaffected. The
 scheduler's reward adds up to 16 for new labels and up to 8 for new transitions, for any
 operator.
@@ -56,7 +56,8 @@ operator.
 
 When a confirmed failure reports labels, EvoFuzz first tries a shortcut. It takes the
 shortest known sequence to the label before the failing step, then the failing action. The
-shortcut replaces the original only if repeated execution reproduces the same failure
+shortcut is skipped if it violates the declared domain or required setup prefix. It
+replaces the original only if repeated execution reproduces the same failure
 signature. Delta debugging then continues from it. The finding records the shortcut under
 `minimization.state_shortcut`.
 
@@ -81,7 +82,10 @@ depend on more than the label. `summary.exhaustive` stays `false`.
 ## Artifacts
 
 - `states.json` (`evofuzz/state-graph/1`) holds the summary, conflicts, and the shortest known
-  sequences for the shallowest labels within a 900 KB budget, with a count of those omitted.
+  sequences for the shallowest labels. The complete serialized file, including conflict
+  witnesses and metadata, fits within a 900 KB budget. `conflicts_omitted` and
+  `shortest_omitted` count retained graph records left out of the artifact; the graph
+  summary still reports its full counts. Conflict evidence is budgeted first.
 - `summary.json` gains `state_graph`.
 - `lineage.jsonl` frontier events name the expanded label in `frontier_state` and have no
   genetic parents.
