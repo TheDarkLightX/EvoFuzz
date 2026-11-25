@@ -1,0 +1,91 @@
+{
+ "schema": "evofuzz/target/1",
+ "objective": "Leave the alarm log inconsistent.",
+ "command": [
+  "{python}",
+  "rooms.py",
+  "--bug"
+ ],
+ "bindings": [
+  "rooms.py"
+ ],
+ "vocabulary": [
+  {
+   "op": "open",
+   "door": "A"
+  },
+  {
+   "op": "close",
+   "door": "A"
+  },
+  {
+   "op": "lock",
+   "door": "A"
+  },
+  {
+   "op": "unlock",
+   "door": "A"
+  },
+  {
+   "op": "open",
+   "door": "B"
+  },
+  {
+   "op": "close",
+   "door": "B"
+  },
+  {
+   "op": "lock",
+   "door": "B"
+  },
+  {
+   "op": "unlock",
+   "door": "B"
+  },
+  {
+   "op": "open",
+   "door": "C"
+  },
+  {
+   "op": "close",
+   "door": "C"
+  },
+  {
+   "op": "lock",
+   "door": "C"
+  },
+  {
+   "op": "unlock",
+   "door": "C"
+  },
+  {
+   "op": "open",
+   "door": "D"
+  },
+  {
+   "op": "close",
+   "door": "D"
+  },
+  {
+   "op": "lock",
+   "door": "D"
+  },
+  {
+   "op": "unlock",
+   "door": "D"
+  },
+  {
+   "op": "arm"
+  },
+  {
+   "op": "disarm"
+  }
+ ],
+ "seeds": [
+  []
+ ],
+ "limits": {
+  "max_actions": 12,
+  "shrink_budget": 40
+ }
+}

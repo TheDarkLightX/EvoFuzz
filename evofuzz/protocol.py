@@ -103,7 +103,7 @@ def case(actions, vocabulary, max_actions, domain=None):
 
 
 def observation(value):
-    keys(value, {"schema", "status", "coverage", "distance", "observation", "failure", "features"},
+    keys(value, {"schema", "status", "coverage", "distance", "observation", "failure", "features", "states"},
          {"schema", "status", "observation"})
     require(value["schema"] == "evofuzz/observation/1", "wrong observation schema")
     require(value["status"] in ("pass", "fail", "invalid"), "wrong observation status")
@@ -111,6 +111,9 @@ def observation(value):
     require(type(coverage) is list and len(coverage) <= 128, "coverage limit/type")
     require(all(type(x) is str and 0 < len(x) <= 128 for x in coverage), "invalid coverage label")
     integer(value.get("distance", 1_000_000), 0, 1_000_000, "distance")
+    states = value.get("states", [])
+    require(type(states) is list and len(states) <= 128, "state label limit/type")
+    require(all(type(x) is str and 0 < len(x) <= 128 and x != "<start>" for x in states), "invalid state label")
     features = value.get("features", {})
     require(type(features) is dict and len(features) <= 16, "feature limit/type")
     require(all(len(k) <= 128 and (v is None or type(v) in (bool, int) or

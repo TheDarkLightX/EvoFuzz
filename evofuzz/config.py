@@ -63,7 +63,8 @@ class Config:
 
     @property
     def operators(self):
-        return self.domain.operators if self.domain else p.OPERATORS
+        base = self.domain.operators if self.domain else p.OPERATORS
+        return base + (("frontier",) if (self.archive or {}).get("state_frontier") else ())
 
     def fingerprint(self):
         files = {name: file_hash((self.root / name).resolve()) for name in self.data["bindings"]}
@@ -102,9 +103,14 @@ def load(path):
     for seed in data["seeds"]:
         p.case(seed, vocabulary, limits["max_actions"], domain)
     settings = data.get("archive", {})
-    p.keys(settings, {"features", "per_family", "exploration_percent"}, set())
+    p.keys(settings, {"features", "per_family", "exploration_percent", "state_frontier", "frontier_tail",
+                      "frontier_percent"}, set())
     settings = {"features": ["family"], "per_family": min(2, limits["max_corpus"]),
-                "exploration_percent": 20} | settings
+                "exploration_percent": 20, "state_frontier": False, "frontier_tail": 16,
+                "frontier_percent": 80} | settings
+    p.require(type(settings["state_frontier"]) is bool, "state_frontier must be true or false")
+    p.integer(settings["frontier_tail"], 0, 128, "frontier tail")
+    p.integer(settings["frontier_percent"], 0, 100, "frontier percentage")
     p.integer(settings["per_family"], 1, min(4, limits["max_corpus"]), "representatives per family")
     p.integer(settings["exploration_percent"], 1, 100, "exploration percentage")
     names = settings["features"]

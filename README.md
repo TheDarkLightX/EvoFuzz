@@ -93,6 +93,41 @@ logged. New operations and parameter values must be declared by the user.
 See the [evolvability design](docs/EVOLVABILITY.md) for the retention, learning
 and domain contract.
 
+## Search the state space, not just sequences
+
+Many different sequences reach the same state, and sequences grow as |actions|ⁿ while
+reachable states often do not. If your harness can name its authoritative state, return one
+label per executed action in `states`, and enable the frontier:
+
+```json
+"archive": {"state_frontier": true}
+```
+
+EvoFuzz then keeps a graph of the labels it has seen:
+- **Frontier cases.** Most attempts extend the shortest known sequence to a label with an
+  action that label has not tried, followed by a short walk that favors actions that usually
+  change state.
+- **Shorter witnesses.** A confirmed failure is first retried from the shortest known sequence
+  to the state before its failing step.
+- **Incomplete labels.** One `(label, action)` pair observed with two different successors
+  means the label misses a distinction. It is reported as a conflict in `states.json`, not as
+  a finding.
+
+```sh
+python3 -m evofuzz run examples/payments/frontier.json --out runs/states --seed 7 --budget 100
+```
+
+On three small stateful benchmarks at 400 evaluations and ten seeds, the frontier:
+- found a combination-lock defect in 10/10 runs, against 1/10 without labels;
+- found a four-way door-and-alarm combination in 5/10, against 1/10;
+- reached the payment double payout in a median of 4 evaluations, against 15.5.
+
+The same attempt share without labels found the first two in 0/10 and 1/10 runs. See the
+[benchmarks](benchmarks/README.md) for the targets, commands and caveats, and the
+[state-graph contract](docs/STATE-GRAPH.md) for what labels do and do not mean. Labels are
+the harness's claim: they steer search and never decide a failure. `closed_depth` describes
+exploration of reported labels, not safety.
+
 ## Connect an agent or LLM
 
 Create a request:
@@ -163,7 +198,7 @@ an input that is edited and restored during execution. Environment variables,
 shared libraries and remote services remain outside those fingerprints.
 Run artifacts can contain sensitive test data; they are Git-ignored by default.
 
-See the [protocol](docs/PROTOCOL.md), [design](DESIGN.md) and
+See the [protocol](docs/PROTOCOL.md), [state-graph exploration](docs/STATE-GRAPH.md), [design](DESIGN.md) and
 [validation record](VALIDATION.md). GPU acceleration, symbolic path solving,
 automatic source mutation and formal safety proofs are outside version 0.2.
 

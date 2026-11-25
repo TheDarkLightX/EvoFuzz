@@ -1,0 +1,57 @@
+{
+ "schema": "evofuzz/target/1",
+ "objective": "Open the lock without authority.",
+ "command": [
+  "{python}",
+  "lock.py",
+  "--bug",
+  "--states"
+ ],
+ "bindings": [
+  "lock.py"
+ ],
+ "vocabulary": [
+  {
+   "op": "press",
+   "key": 0
+  },
+  {
+   "op": "press",
+   "key": 1
+  },
+  {
+   "op": "press",
+   "key": 2
+  },
+  {
+   "op": "press",
+   "key": 3
+  },
+  {
+   "op": "press",
+   "key": 4
+  },
+  {
+   "op": "press",
+   "key": 5
+  },
+  {
+   "op": "open",
+   "authorized": false
+  },
+  {
+   "op": "open",
+   "authorized": true
+  }
+ ],
+ "seeds": [
+  []
+ ],
+ "limits": {
+  "max_actions": 12,
+  "shrink_budget": 40
+ },
+ "archive": {
+  "state_frontier": true
+ }
+}
