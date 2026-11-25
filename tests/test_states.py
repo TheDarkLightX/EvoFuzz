@@ -3,11 +3,13 @@ import random
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evofuzz import protocol as p
 from evofuzz.config import load
 from evofuzz.domain import Domain
 from evofuzz.engine import Evaluator, run
+from evofuzz.evolution import Scheduler
 from evofuzz.states import START, StateGraph
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,8 +110,39 @@ class StateGraphTests(unittest.TestCase):
         for n in range(200):
             graph.observe([UP] * 20, [f"s{n}-{i}" for i in range(20)])
         artifact = graph.artifact(byte_limit=2000)
-        self.assertLessEqual(len(p.canonical(artifact["shortest"])), 3000)
+        self.assertLessEqual(len(p.canonical(artifact).encode("utf-8")) + 1, 2000)
         self.assertGreater(artifact["shortest_omitted"], 0)
+
+    def test_long_conflict_witnesses_fit_complete_artifact_budget(self):
+        action = {"op": "step", "padding": "x" * 224}
+        graph = StateGraph([action])
+        actions = [action] * 128
+        p.case(actions, [action], 128)
+        labels = [f"state-{i}" for i in range(128)]
+        graph.observe(actions, labels)
+        graph.observe(actions, [f"other-{i}" if i >= 97 and i % 2 else label
+                                for i, label in enumerate(labels)])
+        self.assertEqual(len(graph.conflicts), 16)
+        artifact = graph.artifact()
+        self.assertGreater(artifact["conflicts_omitted"], 0)
+        self.assertEqual(len(artifact["conflicts"]) + artifact["conflicts_omitted"], 16)
+        self.assertEqual(len(artifact["shortest"]) + artifact["shortest_omitted"],
+                         len(graph.prefix) - 1)
+        self.assertEqual(artifact["summary"], graph.summary())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "states.json"
+            p.write(path, artifact)
+            self.assertLessEqual(path.stat().st_size, 900_000)
+            self.assertEqual(p.read(path), artifact)
+
+    def test_artifact_budgets_escaped_labels_and_metadata(self):
+        graph = StateGraph(VOCABULARY)
+        graph.observe([UP, DOWN], ['\"' * 128, "é" * 128])
+        for limit in (500, 1000, 2000):
+            artifact = graph.artifact(limit)
+            self.assertLessEqual(len(p.canonical(artifact).encode("utf-8")) + 1, limit)
+        with self.assertRaisesRegex(ValueError, "too small for metadata"):
+            graph.artifact(1)
 
 
 class ProtocolAndConfigTests(unittest.TestCase):
@@ -163,6 +196,48 @@ class FrontierCampaignTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_setup_breaking_shortcut_preserves_confirmed_finding(self):
+        script = self.root / "setup.py"
+        script.write_text(
+            'import json, sys\n'
+            'actions = json.load(sys.stdin)["actions"]\n'
+            'failed = actions[-1]["op"] == "bug"\n'
+            'value = {"schema": "evofuzz/observation/1", '
+            '"status": "fail" if failed else "pass", "observation": [], '
+            '"states": ["bad" if a["op"] == "bug" else "ready" for a in actions]}\n'
+            'if failed: value["failure"] = {"id": "bug", "message": "failed"}\n'
+            'print(json.dumps(value))\n')
+        actions = [{"op": op} for op in ("init1", "init2", "bug")]
+        path = self.root / "setup.json"
+        p.write(path, {"schema": "evofuzz/target/1", "objective": "Find the bug",
+                       "command": ["{python}", "setup.py"], "bindings": ["setup.py"],
+                       "vocabulary": actions, "seeds": [actions],
+                       "domain": {"setup": actions[:2]},
+                       "limits": {"shrink_budget": 0}, "archive": {"state_frontier": True}})
+        output = self.root / "setup-run"
+        summary = run(load(path), output, seed=0, budget=10)
+        self.assertTrue(summary["findings"])
+        self.assertEqual(p.read(output / "summary.json"), summary)
+        finding = p.read(output / summary["findings"][0])
+        self.assertEqual(finding["actions"], actions)
+        self.assertFalse(finding["minimization"]["state_shortcut"]["tried"])
+        self.assertIn("skipped", finding["minimization"]["state_shortcut"])
+
+    def test_uniform_exploration_reaches_scheduler_despite_full_frontier_share(self):
+        path = self.root / "benchmarks/lock-frontier.json"
+        data = p.read(path)
+        data["archive"].update(exploration_percent=100, frontier_percent=100, frontier_tail=0)
+        p.write(path, data)
+        output = self.root / "uniform"
+        with patch.object(Scheduler, "choose", autospec=True, side_effect=Scheduler.choose) as choose:
+            run(load(path), output, seed=0, budget=20)
+        records = [p.loads(line) for line in (output / "lineage.jsonl").read_text().splitlines()]
+        attempts = [r for r in records if r["operator"] not in ("seed", "minimize")]
+        self.assertTrue(attempts)
+        self.assertTrue(all(r["exploration"] for r in attempts))
+        self.assertEqual(choose.call_count, len(attempts))
+        self.assertTrue(any(r["operator"] != "frontier" for r in attempts))
 
     def test_frontier_opens_the_combination_lock_and_records_its_graph(self):
         cfg = load(self.root / "benchmarks/lock-frontier.json")

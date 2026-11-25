@@ -200,13 +200,29 @@ class StateGraph:
 
     def artifact(self, byte_limit=900_000):
         """Summary, conflicts and the shortest known sequences, shallowest first, within a byte budget."""
-        shortest, used = {}, 0
+        artifact = {"schema": "evofuzz/state-graph/1", "summary": self.summary(),
+                    "conflicts": [], "conflicts_omitted": len(self.conflicts),
+                    "shortest": {}, "shortest_omitted": len(self.prefix) - 1}
+        # Reserve metadata with maximum omission counts and p.write's trailing newline.
+        # Counts only decrease, so their serialized widths cannot exceed this reservation.
+        used = len(p.canonical(artifact).encode("utf-8")) + 1
+        limit = min(byte_limit, p.MAX_JSON)
+        p.require(used <= limit, "state artifact byte budget too small for metadata")
+        for conflict in self.conflicts:
+            size = len(p.canonical(conflict).encode("utf-8")) + bool(artifact["conflicts"])
+            if used + size > limit:
+                continue
+            artifact["conflicts"].append(conflict)
+            artifact["conflicts_omitted"] -= 1
+            used += size
         for state, actions in sorted(self.prefix.items(), key=lambda kv: (len(kv[1]), kv[0])):
             if state == START:
                 continue
-            size = len(p.canonical(actions)) + len(state) + 8
-            if used + size > byte_limit:
-                break
-            shortest[state], used = actions, used + size
-        return {"schema": "evofuzz/state-graph/1", "summary": self.summary(), "conflicts": self.conflicts,
-                "shortest": shortest, "shortest_omitted": len(self.prefix) - 1 - len(shortest)}
+            size = (len(p.canonical(state).encode("utf-8")) + 1
+                    + len(p.canonical(actions).encode("utf-8")) + bool(artifact["shortest"]))
+            if used + size > limit:
+                continue
+            artifact["shortest"][state] = actions
+            artifact["shortest_omitted"] -= 1
+            used += size
+        return artifact

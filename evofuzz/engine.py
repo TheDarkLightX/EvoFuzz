@@ -260,7 +260,7 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
             seed_waiting = bool(queue) and queue[0][1] == "seed"
             explored = False if seed_waiting else rng.randrange(100) < corpus.settings["exploration_percent"]
             planned = None
-            if not (queue and not explored) and not seed_waiting and corpus.settings["state_frontier"] \
+            if not explored and not queue and not seed_waiting and corpus.settings["state_frontier"] \
                     and rng.randrange(100) < corpus.settings["frontier_percent"]:
                 planned = graph.plan(rng, config.limits["max_actions"], corpus.settings["frontier_tail"])
             if queue and not explored:
@@ -343,6 +343,12 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                 corpus.credit(parent_family, 32)
             start, shortcut = actions, {"tried": False}
             candidate = graph.shortcut(actions, states)
+            if candidate is not None:
+                try:
+                    p.case(candidate, config.vocabulary, config.limits["max_actions"], config.domain)
+                except ValueError as exc:
+                    shortcut["skipped"] = str(exc)
+                    candidate = None
             if candidate is not None and evaluator.used + config.limits["confirmations"] <= budget:
                 trial = evaluator.evaluate(candidate)
                 same = trial.get("signature") == verdict["signature"]
