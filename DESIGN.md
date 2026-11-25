@@ -23,6 +23,10 @@ finds counterexamples, not a proof that no counterexamples exist.
    objectives, oracles, limits, file bindings or verdicts.
 5. The target checks its properties after every action. An optional independent
    reference process enables differential checking of normalized observations.
+   A target may also label its state after each action. Labels steer an optional
+   frontier operator and shorten witnesses; they are the target's claim, never a
+   verdict. Conflicting transitions are reported as incomplete labels. See
+   [state-graph exploration](docs/STATE-GRAPH.md).
 6. A property failure, observation mismatch or target process exit is a finding
    candidate. Repeated execution must reproduce its failure signature before
    confirmation. A timeout, invalid input, malformed response, unavailable

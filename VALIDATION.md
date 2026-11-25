@@ -53,6 +53,24 @@ Hosted Linux, macOS and Windows CI results remain separate from these local
 results. The workflow tests Python 3.11 and 3.12; Windows skips the two explicit
 POSIX-only fixtures. Check its actual status before making platform claims.
 
+## State-graph exploration (unreleased)
+
+These checks cover the optional `states` labels and frontier operator on the `state-frontier`
+branch. They are local results, not a release qualification.
+
+| Check | Result |
+|---|---|
+| Unit/integration suite, including 15 state-graph tests | 64 passed (Python 3.13, Linux) |
+| Frontier off: identical runs to commit `3386b3d` | Seeds 0–2 of the lock and payments baselines matched in first failure, evaluations and unique cases |
+| Lock benchmark, 400 evaluations, seeds 0–9 | Frontier 10/10 found; baseline 1/10; frontier share without labels 0/10 |
+| Rooms benchmark, same budget | Frontier 5/10; baseline 1/10; without labels 1/10 |
+| Payments example, same budget | Both 10/10; median evaluations to the first failure 4 with the frontier, 15.5 without |
+| Coarse labels on the correct lock | Conflicts reported, no finding, no `closed_depth` |
+| Witness lengths | Shortest possible in every found run |
+
+The benchmark targets were written for stateful search, and three targets with ten seeds do
+not establish a general advantage. See [benchmarks](benchmarks/README.md).
+
 ## Required checks
 
 - All unit/integration tests with `python3 -m unittest discover -v`.

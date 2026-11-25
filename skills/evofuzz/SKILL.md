@@ -47,6 +47,13 @@ Optional `family_weights` may name only family IDs in the current request.
 Write `evofuzz/proposal/1` with the exact request ID, up to 16 action arrays and
 optional mutation weights. Do not add commands, oracle changes or verdicts.
 
+When the target can name its authoritative state, have the harness return
+`states` (one label per executed action) and set `archive.state_frontier`.
+The frontier then tries each untried action from each reached state. Read
+`states.json`: conflicting transitions mean the label misses a distinction the
+target makes, so fix the harness's label before trusting the frontier. A
+`closed_depth` describes exploration of the reported labels, not safety.
+
 ```sh
 python3 -m evofuzz run TARGET.json --out runs/steered --proposal proposal.json --seed 7 --budget 200
 ```

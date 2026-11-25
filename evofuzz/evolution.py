@@ -91,9 +91,9 @@ class Corpus:
         self._trim()
         return identity in self.records
 
-    def observe(self, actions, result, generation=0, event_id=None):
+    def observe(self, actions, result, generation=0, event_id=None, state_novelty=0, transition_novelty=0):
         if result["outcome"] not in ("pass", "failure"):
-            return {"reward": 0, "retained": False, "family_id": None}
+            return {"reward": 0, "retained": False, "family_id": None, "state_novelty": state_novelty}
         value = result.get("target", {}).get("value", {})
         coverage = set(value.get("coverage", []))
         novelty = len(coverage - self.coverage)
@@ -105,9 +105,11 @@ class Corpus:
         self.coverage.update(sorted(coverage - self.coverage)[:max(0, 4096 - len(self.coverage))])
         self.distance = min(self.distance, value.get("distance", 1_000_000))
         retained = self.add(actions, result, generation, event_id=event_id)
-        reward = min(16, novelty) + 8 * int(new_family and retained) + 4 * int(improved and retained) + 2 * int(new_structure and retained)
+        reward = min(16, novelty) + 8 * int(new_family and retained) + 4 * int(improved and retained) + \
+            2 * int(new_structure and retained) + min(16, state_novelty) + min(8, transition_novelty)
         return {"reward": reward, "retained": retained, "family_id": family_id,
-                "new_family": new_family, "coverage_novelty": novelty, "distance_improved": improved}
+                "new_family": new_family, "coverage_novelty": novelty, "distance_improved": improved,
+                "state_novelty": state_novelty}
 
     def choose(self, rng, explore=False, priors=None):
         families = sorted({e["family_id"] for e in self.records.values()})

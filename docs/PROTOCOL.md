@@ -77,6 +77,12 @@ identity, not authorization. Never deserialize executable model-generated code.
 }
 ```
 
+An optional `states` array names the target state after each executed action:
+`"states":["funded","paid"]`. It has at most one label per executed action, including a
+failing one; each label is a string of 1–128 characters other than `<start>`. More labels
+than actions is a protocol error. Labels steer the optional state frontier and are never
+verdicts; see [state-graph exploration](STATE-GRAPH.md).
+
 `status` is `pass`, `fail` or `invalid`. `observation` is required and contains
 the deterministic semantic output to compare with a reference. It can include
 the full step history; omit clocks and diagnostic counters. Coverage and
@@ -113,7 +119,7 @@ vocabulary, bounds, operators, corpus examples and available feedback. Its
 There may be up to 16 proposed cases. Cases must match the declared prototypes,
 parameter domains and required setup. Optional weights are integers 1–100 for
 operators named in the request: `insert`, `replace`, `delete`, `duplicate`,
-`swap`, `splice`, `random`, and, where configured, `parameter`, `rebind`, `block`.
+`swap`, `splice`, `random`, and, where configured, `parameter`, `rebind`, `block` and `frontier`.
 Optional `family_weights` maps only family IDs named in the exact request to
 positive integer weights 1–100. Unspecified weights retain their prior values.
 Every operator retains positive weight. Hypotheses are advisory text;
@@ -175,6 +181,17 @@ identify derivations, so a sequence can reappear without a cyclic ancestry
 claim. Splicing names both parents; random generation and externally supplied
 cases do not invent genetic parents. Confirmation receipts and minimization
 summaries remain in findings; not every intermediate shrink trial is logged.
+
+## State-graph settings
+
+`archive.state_frontier` (default `false`) enables the `frontier` operator, which extends the
+shortest known sequence to a reported state with an action that state has not tried.
+`archive.frontier_percent` (0–100, default 80) is the share of non-queued attempts after the
+seeds that use the frontier while one exists. `archive.frontier_tail` (0–128, default 16)
+bounds the random actions appended after the untried one. A run whose target reports
+`states` writes `states.json` and adds `state_graph` to `summary.json`. That records labels,
+transitions, frontier size, terminal labels, conflicting transitions and, where defined,
+`closed_depth`. These describe exploration of reported labels, not safety.
 
 ## Replay and mutation testing
 

@@ -10,6 +10,7 @@ from . import protocol as p
 from .config import Config
 from .evolution import Corpus, Scheduler
 from .runner import execute
+from .states import StateGraph
 
 
 class BudgetExhausted(Exception):
@@ -56,6 +57,9 @@ class Evaluator:
         if actual["transport"] != "ok":
             return {"outcome": "error", "reason": actual["transport"], "detail": actual}
         value = actual["value"]
+        if len(value.get("states", [])) > len(actions):
+            return {"outcome": "error", "reason": "protocol_error",
+                    "detail": {"message": "more state labels than actions"}}
         if value["status"] == "fail":
             return failure("property", value["failure"]["id"], actual, oracle)
         if oracle:
@@ -70,6 +74,10 @@ class Evaluator:
 def failure(kind, identity, actual, oracle):
     return {"outcome": "failure", "signature": p.digest([kind, identity]), "kind": kind,
             "id": identity, "target": actual, "oracle": oracle}
+
+
+def reported_states(verdict):
+    return ((verdict.get("target") or {}).get("value") or {}).get("states")
 
 
 def replay_receipts(results):
@@ -206,6 +214,7 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
     weights = dict.fromkeys(config.operators, 1)
     family_weights = {}
     scheduler = Scheduler(config.operators)
+    graph = StateGraph(config.vocabulary, config.domain)
     events, findings, seen = [], [], set()
     signatures = set()
     recent_failures = []
@@ -225,6 +234,8 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                                  "recent_failures": recent_failures})
                 packet.pop("request_id")
                 packet["learning"] = {f["family_id"]: scheduler.stats.get(f["family_id"], {}) for f in packet["families"][:4]}
+                if len(graph.prefix) > 1:
+                    packet["feedback"]["state_graph"] = graph.summary()
                 packet["request_id"] = p.digest(packet)
                 proposer_calls += 1
                 result = execute(config.commands["proposer"], (p.canonical(packet) + "\n").encode(),
@@ -245,10 +256,17 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                 next_proposal = evaluator.used + config.limits["proposer_interval"]
             attempts += 1
             parents, parent_events, generation, parent_family, donor = [], [], 0, None, None
+            frontier_state = None
             seed_waiting = bool(queue) and queue[0][1] == "seed"
             explored = False if seed_waiting else rng.randrange(100) < corpus.settings["exploration_percent"]
+            planned = None
+            if not (queue and not explored) and not seed_waiting and corpus.settings["state_frontier"] \
+                    and rng.randrange(100) < corpus.settings["frontier_percent"]:
+                planned = graph.plan(rng, config.limits["max_actions"], corpus.settings["frontier_tail"])
             if queue and not explored:
                 actions, origin, proposal_id = queue.pop(0)
+            elif planned is not None:
+                (actions, frontier_state), origin, proposal_id = planned, "frontier", None
             else:
                 parent = corpus.choose(rng, explored, family_weights)
                 parent_family = parent["family_id"]
@@ -260,10 +278,16 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                     parents.append(donor["case_id"])
                     parent_events.append(donor["event_id"])
                     generation = max(generation, donor["generation"] + 1)
-                actions, _ = mutate(rng, parent["actions"], config.vocabulary,
-                                    config.limits["max_actions"], corpus.entries, weights,
-                                    config.domain, origin, donor["actions"] if donor else None)
-                if origin == "random":
+                planned = graph.plan(rng, config.limits["max_actions"], corpus.settings["frontier_tail"]) \
+                    if origin == "frontier" else None
+                if planned is not None:
+                    actions, frontier_state = planned
+                else:
+                    actions, _ = mutate(rng, parent["actions"], config.vocabulary,
+                                        config.limits["max_actions"], corpus.entries, weights,
+                                        config.domain, "random" if origin == "frontier" else origin,
+                                        donor["actions"] if donor else None)
+                if origin in ("random", "frontier"):
                     parents, parent_events, generation = [], [], 0
                 proposal_id = None
             case_id = p.digest(actions)
@@ -271,6 +295,8 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                        "parents": parents, "parent_events": parent_events,
                        "operator": origin, "generation": generation, "exploration": explored,
                        "proposal_request_id": proposal_id}
+            if origin == "frontier":
+                descent["frontier_state"] = frontier_state
             try:
                 p.case(actions, config.vocabulary, config.limits["max_actions"], config.domain)
             except ValueError as exc:
@@ -287,7 +313,9 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
             verdict = evaluator.evaluate(actions)
             log.write(p.canonical({"actions": actions, "case_id": case_id, "origin": origin, "result": verdict}) + "\n")
             log.flush()
-            selection = corpus.observe(actions, verdict, generation, descent["event_id"])
+            states = reported_states(verdict)
+            novelty = graph.observe(actions, states, verdict["outcome"] == "failure") if states is not None else (0, 0)
+            selection = corpus.observe(actions, verdict, generation, descent["event_id"], *novelty)
             lineage.write(p.canonical(descent | {"status": "executed", "selection": selection}) + "\n")
             lineage.flush()
             if parent_family:
@@ -313,7 +341,17 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                 scheduler.record(parent_family, origin, 32, count_attempt=False,
                                  newly_productive=selection["reward"] == 0)
                 corpus.credit(parent_family, 32)
-            minimal, minimization = shrink(evaluator, actions, verdict["signature"])
+            start, shortcut = actions, {"tried": False}
+            candidate = graph.shortcut(actions, states)
+            if candidate is not None and evaluator.used + config.limits["confirmations"] <= budget:
+                trial = evaluator.evaluate(candidate)
+                same = trial.get("signature") == verdict["signature"]
+                stable_cut = same and confirm(evaluator, candidate, trial)[0]
+                shortcut = {"tried": True, "length": len(candidate), "reproduced": stable_cut}
+                if stable_cut:
+                    start = candidate
+            minimal, minimization = shrink(evaluator, start, verdict["signature"])
+            minimization["state_shortcut"] = shortcut
             item = {"schema": "evofuzz/finding/1", "status": "confirmed-signature",
                     "binding_id": p.digest(binding), "actions": minimal, "original_actions": actions,
                     "signature": verdict["signature"], "kind": verdict["kind"], "id": verdict["id"],
@@ -343,6 +381,8 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                                       {"coverage_count": len(r["coverage"])} for r in corpus.records.values()]})
     p.write(out / "learning.json", {"schema": "evofuzz/learning/1", "operators": scheduler.stats,
                                    "exploration_percent": corpus.settings["exploration_percent"]})
+    if len(graph.prefix) > 1:
+        p.write(out / "states.json", graph.artifact())
     if evaluator.used < budget and status == "budget-complete":
         status = "attempt-limit"
     summary = {"schema": "evofuzz/run/1", "status": status, "seed": seed,
@@ -353,5 +393,7 @@ def run(config, out, seed=0, budget=200, proposals=None, enable_proposer=False):
                "inconclusive_candidates": any(e["status"] in ("unstable", "unconfirmed-budget")
                                                 for e in events if "status" in e),
                "binding_id": p.digest(binding), "exhaustive": False}
+    if len(graph.prefix) > 1:
+        summary["state_graph"] = graph.summary()
     p.write(out / "summary.json", summary)
     return summary

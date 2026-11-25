@@ -1,11 +1,18 @@
-"""Bounded payment-domain harness with an explicit refund-after-payment mutant."""
+"""Bounded payment-domain harness with an explicit refund-after-payment mutant.
+
+--states reports the authoritative account state after every action, for state-graph search.
+"""
 import json
 import sys
 
 
-def execute(actions, buggy=False):
+def label(accounts):
+    return ",".join(f"{k}:{a['balance']}{a['paid']}{a['refunded']}" for k, a in sorted(accounts.items()))
+
+
+def execute(actions, buggy=False, states_wanted=False):
     accounts = {key: {"balance": 1, "paid": 0, "refunded": 0} for key in ("A", "B")}
-    history, coverage = [], set()
+    history, coverage, states = [], set(), []
     family = "exploration"
     ids, pays = set(), set()
     for index, action in enumerate(actions):
@@ -39,14 +46,17 @@ def execute(actions, buggy=False):
                 pays.add(key)
         coverage.add(op + (":accepted" if accepted else ":rejected"))
         history.append({"accepted": accepted, "accounts": json.loads(json.dumps(accounts))})
+        states.append(label(accounts))
         if any(sum(a.values()) != 1 for a in accounts.values()):
             return {"schema": "evofuzz/observation/1", "status": "fail", "observation": history,
                     "coverage": sorted(coverage), "features": {"family": family}, "distance": 0,
-                    "failure": {"id": "conservation", "message": f"double payout after step {index}"}}
+                    "failure": {"id": "conservation", "message": f"double payout after step {index}"}} | \
+                ({"states": states} if states_wanted else {})
     distance = 1 if any(a["paid"] for a in accounts.values()) else 2
     return {"schema": "evofuzz/observation/1", "status": "pass", "observation": history,
-            "coverage": sorted(coverage), "features": {"family": family}, "distance": distance}
+            "coverage": sorted(coverage), "features": {"family": family}, "distance": distance} | \
+        ({"states": states} if states_wanted else {})
 
 
 if __name__ == "__main__":
-    print(json.dumps(execute(json.load(sys.stdin)["actions"], "--bug" in sys.argv)))
+    print(json.dumps(execute(json.load(sys.stdin)["actions"], "--bug" in sys.argv, "--states" in sys.argv)))
